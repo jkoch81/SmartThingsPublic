@@ -1,0 +1,99 @@
+# Wall panel dashboard: "Travel" tab with a live flight map that appears only
+# while the tracked flight is in the air.
+#
+# Paste the view below into your wall panel dashboard (Raw configuration editor)
+# in place of the existing Travel view, or copy just the two conditional cards
+# into the existing view. Requires home-assistant/packages/flight_tracking.yaml.
+#
+# Why a map "didn't pop up" before: a conditional card only renders when its
+# condition matches exactly. Here the condition is a dedicated binary sensor
+# (on/off), so it does not depend on matching a free-text flight status string.
+
+views:
+  - title: Travel
+    path: travel
+    icon: mdi:airplane
+    cards:
+      # ------------------------------------------------------------------
+      # Shown ONLY while the flight is airborne: live map + flight details.
+      # ------------------------------------------------------------------
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: binary_sensor.flight_in_air
+            state: "on"
+        card:
+          type: vertical-stack
+          cards:
+            - type: map
+              title: Live flight
+              entities:
+                - entity: sensor.tracked_flight
+              auto_fit: true
+              fit_zones: false
+              default_zoom: 5
+              hours_to_show: 8   # draws the path flown so far
+              theme_mode: auto
+              aspect_ratio: "16:9"
+            - type: glance
+              columns: 4
+              show_state: true
+              entities:
+                - entity: sensor.tracked_flight
+                  name: Flight
+                  attribute: flight_number
+                - entity: sensor.tracked_flight
+                  name: From
+                  attribute: origin
+                - entity: sensor.tracked_flight
+                  name: To
+                  attribute: destination
+                - entity: sensor.tracked_flight
+                  name: Arrives
+                  attribute: estimated_arrival
+                - entity: sensor.tracked_flight
+                  name: Altitude (ft)
+                  attribute: altitude_ft
+                - entity: sensor.tracked_flight
+                  name: Speed (kt)
+                  attribute: ground_speed_kt
+                - entity: sensor.tracked_flight
+                  name: Aircraft
+                  attribute: aircraft
+                - entity: sensor.tracked_flight
+                  name: Airline
+                  attribute: airline
+            # Optional external live map. Many flight sites refuse to load inside
+            # an iframe; if this shows blank, delete it. The map card above does
+            # not depend on it.
+            # - type: iframe
+            #   url: https://flightaware.com/live/flight/DL1234
+            #   aspect_ratio: "16:9"
+
+      # ------------------------------------------------------------------
+      # Shown when nothing is airborne: status + where to enter a flight.
+      # ------------------------------------------------------------------
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: binary_sensor.flight_in_air
+            state_not: "on"
+        card:
+          type: vertical-stack
+          cards:
+            - type: markdown
+              content: >-
+                ✈️ **No flight in the air right now.**
+
+                Status: {{ states('sensor.tracked_flight') }}
+                {% if state_attr('sensor.tracked_flight', 'flight_number') %}
+                ({{ state_attr('sensor.tracked_flight', 'flight_number') }})
+                {% endif %}
+
+                The live map appears here automatically once the tracked flight takes off.
+            - type: entities
+              entities:
+                - entity: input_text.tracked_flight_number
+                  name: Flight number to track
+                - entity: sensor.tracked_flight
+                  name: Tracked flight
