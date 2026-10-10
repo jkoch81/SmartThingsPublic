@@ -1,0 +1,102 @@
+# Home Assistant package: live flight tracking for the wall panel "Travel" tab.
+#
+# Install:
+#   1. Make sure packages are enabled in configuration.yaml:
+#        homeassistant:
+#          packages: !include_dir_named packages
+#   2. Copy this file to <config>/packages/flight_tracking.yaml
+#   3. Install the FlightRadar24 integration (HACS: "Flightradar24") and set it up.
+#      It creates sensor.flightradar24_tracked, whose "flights" attribute holds
+#      the position of every flight you track with the flightradar24.add_track
+#      service. Change SOURCE below if your tracked sensor has a different id.
+#   4. Restart Home Assistant (or reload template entities + helpers).
+#
+# What you get:
+#   sensor.tracked_flight          "No flight" / "On the ground" / "In the air"
+#                                  with latitude/longitude attributes so the
+#                                  Lovelace map card can plot the aircraft.
+#   binary_sensor.flight_in_air    on while the tracked flight is airborne.
+#                                  The dashboard's conditional card keys off this.
+#   input_text.tracked_flight_number
+#                                  type a flight number (e.g. DL1234) on the
+#                                  panel; an automation starts tracking it.
+
+input_text:
+  tracked_flight_number:
+    name: Tracked flight number
+    icon: mdi:airplane-search
+    max: 10
+    pattern: "[A-Za-z0-9]*"
+
+template:
+  - sensor:
+      - name: "Tracked Flight"
+        unique_id: tracked_flight
+        icon: >-
+          {% if is_state('sensor.tracked_flight', 'In the air') %}
+            mdi:airplane
+          {% elif is_state('sensor.tracked_flight', 'On the ground') %}
+            mdi:airplane-landing
+          {% else %}
+            mdi:airplane-off
+          {% endif %}
+        # SOURCE: the FlightRadar24 "tracked" sensor. Edit the entity id here if yours differs.
+        state: >-
+          {% set flights = state_attr('sensor.flightradar24_tracked', 'flights') or [] %}
+          {% if flights | count == 0 %}
+            No flight
+          {% elif flights[0].on_ground | int(1) == 1 or flights[0].altitude | int(0) <= 0 %}
+            On the ground
+          {% else %}
+            In the air
+          {% endif %}
+        attributes:
+          flight_number: >-
+            {% set f = (state_attr('sensor.flightradar24_tracked', 'flights') or [{}])[0] %}
+            {{ f.get('flight_number') or f.get('callsign') }}
+          airline: >-
+            {{ (state_attr('sensor.flightradar24_tracked', 'flights') or [{}])[0].get('airline_short') }}
+          aircraft: >-
+            {{ (state_attr('sensor.flightradar24_tracked', 'flights') or [{}])[0].get('aircraft_model') }}
+          origin: >-
+            {{ (state_attr('sensor.flightradar24_tracked', 'flights') or [{}])[0].get('airport_origin_code_iata') }}
+          destination: >-
+            {{ (state_attr('sensor.flightradar24_tracked', 'flights') or [{}])[0].get('airport_destination_code_iata') }}
+          estimated_arrival: >-
+            {{ (state_attr('sensor.flightradar24_tracked', 'flights') or [{}])[0].get('time_estimated_arrival') }}
+          altitude_ft: >-
+            {{ (state_attr('sensor.flightradar24_tracked', 'flights') or [{}])[0].get('altitude') }}
+          # FlightRadar24 reports ground speed in knots; convert to mph for the panel.
+          ground_speed_mph: >-
+            {% set kt = (state_attr('sensor.flightradar24_tracked', 'flights') or [{}])[0].get('ground_speed') %}
+            {{ (kt | float * 1.15078) | round(0) | int if kt is not none else none }}
+          heading: >-
+            {{ (state_attr('sensor.flightradar24_tracked', 'flights') or [{}])[0].get('heading') }}
+          # latitude/longitude are what the map card reads. They are left empty
+          # when nothing is tracked so the map does not plot a stale point.
+          latitude: >-
+            {{ (state_attr('sensor.flightradar24_tracked', 'flights') or [{}])[0].get('latitude') }}
+          longitude: >-
+            {{ (state_attr('sensor.flightradar24_tracked', 'flights') or [{}])[0].get('longitude') }}
+
+  - binary_sensor:
+      - name: "Flight In Air"
+        unique_id: flight_in_air
+        icon: mdi:airplane-takeoff
+        state: "{{ is_state('sensor.tracked_flight', 'In the air') }}"
+
+automation:
+  - id: track_flight_number_from_panel
+    alias: "Travel: track flight number entered on wall panel"
+    description: Starts FlightRadar24 tracking whenever a flight number is entered.
+    mode: restart
+    trigger:
+      - platform: state
+        entity_id: input_text.tracked_flight_number
+    condition:
+      - condition: template
+        value_template: "{{ trigger.to_state.state | trim | length > 2 }}"
+    action:
+      - service: flightradar24.add_track
+        data:
+          number: "{{ trigger.to_state.state | trim | upper }}"
