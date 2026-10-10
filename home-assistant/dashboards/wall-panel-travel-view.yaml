@@ -55,8 +55,8 @@ views:
                   name: Altitude (ft)
                   attribute: altitude_ft
                 - entity: sensor.tracked_flight
-                  name: Speed (kt)
-                  attribute: ground_speed_kt
+                  name: Speed (mph)
+                  attribute: ground_speed_mph
                 - entity: sensor.tracked_flight
                   name: Aircraft
                   attribute: aircraft

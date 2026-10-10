@@ -66,8 +66,10 @@ template:
             {{ (state_attr('sensor.flightradar24_tracked', 'flights') or [{}])[0].get('time_estimated_arrival') }}
           altitude_ft: >-
             {{ (state_attr('sensor.flightradar24_tracked', 'flights') or [{}])[0].get('altitude') }}
-          ground_speed_kt: >-
-            {{ (state_attr('sensor.flightradar24_tracked', 'flights') or [{}])[0].get('ground_speed') }}
+          # FlightRadar24 reports ground speed in knots; convert to mph for the panel.
+          ground_speed_mph: >-
+            {% set kt = (state_attr('sensor.flightradar24_tracked', 'flights') or [{}])[0].get('ground_speed') %}
+            {{ (kt | float * 1.15078) | round(0) | int if kt is not none else none }}
           heading: >-
             {{ (state_attr('sensor.flightradar24_tracked', 'flights') or [{}])[0].get('heading') }}
           # latitude/longitude are what the map card reads. They are left empty
